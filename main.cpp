@@ -1,12 +1,234 @@
-﻿#include <iostream>
+#include <iostream>
 #include <fstream>
 #include <string>
 #include <vector>
 #include <limits>
+#include <random>
+
+// --- Dzialanie algorytmu genetycznego ---
+// 1. Tworzymy populacje losowych rozwiązań dla danych wejściowych
+// 2. Greedy - Używamy algorytmu zachłannego dla każdego rozwiązania
+// 3. Selection - Wybór najlepszych rozwiązan z populacji (im mniejszy czas zakończenia tym lepsze rozwiązanie)
+// 4. Crossover - Krzyżowane rozwiązan z kroku 3 w celu stworzenia potomków. Wymiana pewnych części rozwiązań.
+// 5. Mutation - Losowe modyfikowanie rozwiązan potomnych (aby zróżnicować rozwiązania)
+// 6. Nowoutworzone rozwiązania zastępuja starsze rozwiązania w populacji
+// 7. Warunek stopu - Powyższe kroki (2-6) są powtarzane przez określona liczbę iteracji lub do osiągnięcia zadowalającego czasu zakończenia
+// 8. Po zakończeniu wybierane jest najlepsze rozwiązanie
+
+// --- Parametry metaheurestyki genetycznej ---
+// populationSize - Liczba populacji z losowymi rozwiązaniami (krok 1)
+// maxGenerations - Ile razy przejdzie przez populacje (krok 7)
+// mutationRate - Jest to wartość z zakresu od 0.0 do 1.0, która reprezentuje prawdopodobieństwo wystąpienia mutacji dla każdego osobnika w populacji.
+//      Niższa wartość oznacza mniejsze prawdopodobieństwo mutacji, podczas gdy wyższa wartość może prowadzić do większego wpływu mutacji na populację.
+
+int greedy(
+   std::vector<int>processors,
+   std::vector<int>tasks
+) {
+    std::vector<int>::size_type processorsCount = processors.size();
+    std::vector<int>::size_type tasksCount = tasks.size();
+    
+    // Zaplanowanie zadan
+    for (int i = 0; i < tasksCount; i++) {
+        int minFinishTime = std::numeric_limits<int>::max();
+        int minFinishTimeProcessorIndex = 0;
+
+        // Znalezienie procesora, ktory ma najmniejszy czas ukonczenia
+        for (int j = 0; j < processorsCount; j++) {
+            int finishTime = processors[j];
+
+            if (finishTime < minFinishTime) {
+                minFinishTime = finishTime;
+                minFinishTimeProcessorIndex = j;
+            }
+        }
+
+        // Dodanie zadania do procesora, ktory ma najmniejszy czas ukonczenia
+        processors[minFinishTimeProcessorIndex] += tasks[i];
+    }
+
+    // Wyswietlanie wynikow
+    // - Czas ukonczenia kazdego z procesorow
+    // - Czas procesora, ktory ukonczy sie jako ostatni
+    int maxFinishTime = 0;
+    for (int j = 0; j < processorsCount; j++) {
+        // std::cout << "Processor " << j + 1 << " finish time: " << processors[j] << std::endl;
+        if (processors[j] > maxFinishTime) {
+            maxFinishTime = processors[j];
+        }
+    }
+    
+    return maxFinishTime;
+}
+
+// Mutation - Losowe modyfikowanie rozwiązan potomnych (aby zróżnicować rozwiązania)
+void mutation(std::vector<int>& plan) {
+    std::vector<int>::size_type planSize = plan.size();
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, planSize - 1);
+    
+    // Wylosuj dwa indexy dla populacji
+    int index1 = dis(gen);
+    int index2 = dis(gen);
+
+    // Zamien ze soba wylosowane elementy
+    int temp = plan[index1];
+    plan[index1] = plan[index2];
+    plan[index2] = temp;
+}
+
+// Crossover - Krzyżowane rozwiązan z kroku 3 w celu stworzenia potomków. Wymiana pewnych części rozwiązań.
+std::vector<int> crossover(const std::vector<int>& parent1, const std::vector<int>& parent2) {
+    std::vector<int>::size_type planSize = parent1.size();
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, planSize - 1);
+
+    // Wylosuj punkt w którym zrobimy krzyżowanie
+    int crossoverPoint = dis(gen);
+
+    std::vector<int> child(planSize);
+
+    // Skopiuj pierwszą część parent1 do dziecka
+    for (int i = 0; i < crossoverPoint; i++) {
+        child[i] = parent1[i];
+    }
+
+    // Skopiuj drugą część parent2 do dziecka
+    for (int i = crossoverPoint; i < planSize; i++) {
+        child[i] = parent2[i];
+    }
+
+    return child;
+}
+
+// Selection - Wybór najlepszych rozwiązan z populacji (im mniejszy czas zakończenia tym lepsze rozwiązanie)
+std::vector<std::vector<int>> selection(const std::vector<std::vector<int>>& population, const std::vector<int>& tasks) {
+    std::vector<std::pair<int, int>> completionTimes;
+    std::vector<int>::size_type populationSize = population.size();
+
+    // Oblicz czas zakończenia dla każdego rozwiązania w populacji
+    for (int i = 0; i < populationSize; i++) {
+        int completionTime = greedy(population[i], tasks);
+        completionTimes.push_back(std::make_pair(i, completionTime));
+    }
+
+    // Posortuj rosnąco czasy zakończenia
+    for (int i = 0; i < populationSize - 1; i++) {
+        for (int j = 0; j < populationSize - i - 1; j++) {
+            if (completionTimes[j].second > completionTimes[j + 1].second) {
+                std::swap(completionTimes[j], completionTimes[j + 1]);
+            }
+        }
+    }
+
+    std::vector<std::vector<int>> selectedPopulation;
+
+    // Pierwszą połowe najlepszych rozwiązań przekazujemy do następnej generacji
+    for (int i = 0; i < populationSize / 2; i++) {
+        selectedPopulation.push_back(population[completionTimes[i].first]);
+    }
+
+    return selectedPopulation;
+}
+
+void genetic(
+     std::vector<int>processors,
+     std::vector<int>tasks
+) {
+    int populationSize;
+    int maxGenerations;
+    double mutationRate;
+
+    std::cout << "Liczba pokoleń: ";
+    std::cin >> populationSize;
+
+    std::cout << "Maksymalna ilość generacji: ";
+    std::cin >> maxGenerations;
+
+    std::cout << "Współczynnik mutacji (0.0-1.0): ";
+    std::cin >> mutationRate;
+    
+    std::vector<int>::size_type tasksCount = tasks.size();
+
+    // Wylosowanie pierwszej populacji rozwiązań
+        std::vector<std::vector<int>> population(populationSize, std::vector<int>(tasksCount));
+
+        for (int i = 0; i < populationSize; i++) {
+            for (int j = 0; j < tasksCount; j++) {
+                population[i][j] = j + 1;
+            }
+            
+            std::random_device rd;
+            std::mt19937 g(rd());
+
+            std::shuffle(population[i].begin(), population[i].end(), g);
+        }
+
+        int generation = 0;
+        int bestCompletionTime = std::numeric_limits<int>::max();
+        std::vector<int> bestIndividual;
+
+        while (generation < maxGenerations) {
+            std::vector<std::vector<int>> selectedPopulation = selection(population, tasks);
+
+            std::vector<std::vector<int>> newPopulation;
+
+            // Krzyżowanie i mutacja rozwiązań do nowej populacji
+            while (newPopulation.size() < populationSize) {
+                // Wylosuj indexy dwóch populacji rodziców
+                int parentIndex1 = rand() % selectedPopulation.size();
+                int parentIndex2 = rand() % selectedPopulation.size();
+
+                std::vector<int> parent1 = selectedPopulation[parentIndex1];
+                std::vector<int> parent2 = selectedPopulation[parentIndex2];
+
+                // Krzyżowanie wylosowanych rodziców
+                std::vector<int> child = crossover(parent1, parent2);
+
+                // Mutacja populacji dziecka z siłą na podstawie parametru
+                double mutationProbability = (double)rand() / RAND_MAX;
+                if (mutationProbability <= mutationRate) {
+                    mutation(child);
+                }
+
+                newPopulation.push_back(child);
+            }
+
+            population = newPopulation;
+
+            // Znajdz najlepsze rozwiązanie
+            for (int i = 0; i < populationSize; i++) {
+                int completionTime = greedy(population[i], tasks);
+
+                if (completionTime < bestCompletionTime) {
+                    bestCompletionTime = completionTime;
+                    bestIndividual = population[i];
+                }
+            }
+
+            generation++;
+        }
+
+        std::cout << "Najlepsze rozwiązanie: ";
+        for (int i = 0; i < tasksCount; i++) {
+            std::cout << bestIndividual[i] << " ";
+        }
+        std::cout << std::endl;
+
+        std::cout << "Najlepszy czas: " << bestCompletionTime << std::endl;
+
+}
 
 int main()
 {
-    std::cout << "Co chcesz zrobic?\n" << "1. Wygenerowac\n" << "2. Wczytac i uzyc algorytmu zachlannego\n" << std::endl;
+    std::cout
+        << "Co chcesz zrobic?\n"
+        << "1. Wygenerowac\n"
+        << "2. Wczytac i uzyc algorytmu zachlannego\n"
+        << "3. Wczytac i uzyc metaheurestyki genetycznej\n"
+        << std::endl;
 
     int programOption;
     std::cin >> programOption;
@@ -33,7 +255,7 @@ int main()
 
         outfile.close();
     }
-    else if (programOption == 2) {
+    else if (programOption == 2 || programOption == 3) {
         // Wczytywanie instancji
         std::string fileName;
 
@@ -41,10 +263,7 @@ int main()
         std::cin >> fileName;
 
         std::ifstream instances(fileName);
-
-        int processorsCount = 0;
-        int tasksCount = 0;
-
+        
         std::vector<int> tasks;
         std::vector<int> processors;
 
@@ -54,12 +273,10 @@ int main()
 
             while (std::getline(instances, instance)) {
                 if (i == 0) { // 1 linia to liczba procesorów
-                    processorsCount = std::stoi(instance);
-                    processors.resize(processorsCount, 0);
+                    processors.resize(std::stoi(instance), 0);
                 }
                 else if (i == 1) { // 2 linia to liczba zadań
-                    tasksCount = std::stoi(instance);
-                    tasks.resize(tasksCount);
+                    tasks.resize(std::stoi(instance));
                 }
                 else { // kazda kolejna linia to zadanie
                     tasks[i - 2] = std::stoi(instance);
@@ -73,38 +290,13 @@ int main()
             return 1;
         }
 
-        // Zaplanowanie zadan
-        for (int i = 0; i < tasksCount; i++) {
-            int minFinishTime = std::numeric_limits<int>::max();
-            int minFinishTimeProcessorIndex = 0;
-
-            // Znalezienie procesora, ktory ma najmniejszy czas ukonczenia
-            for (int j = 0; j < processorsCount; j++) {
-                int finishTime = processors[j];
-
-                if (finishTime < minFinishTime) {
-                    minFinishTime = finishTime;
-                    minFinishTimeProcessorIndex = j;
-                }
-            }
-
-            // Dodanie zadania do procesora, ktory ma najmniejszy czas ukonczenia
-            processors[minFinishTimeProcessorIndex] += tasks[i];
+        if (programOption == 2) {
+            int maxFinishTime = greedy(processors, tasks);
+            std::cout << "Najlepszy czas: " << maxFinishTime << std::endl;
+        } else {
+            genetic(processors, tasks);
         }
-
-        // Wyswietlanie wynikow
-        // - Czas ukonczenia kazdego z procesorow
-        // - Czas procesora, ktory ukonczy sie jako ostatni
-        int maxFinishTime = 0;
-        for (int j = 0; j < processorsCount; j++) {
-            // std::cout << "Processor " << j + 1 << " finish time: " << processors[j] << std::endl;
-            if (processors[j] > maxFinishTime) {
-                maxFinishTime = processors[j];
-            }
-        }
-
-        std::cout << "Total completion time: " << maxFinishTime << std::endl;
     }
-
+     
     return 0;
 }
