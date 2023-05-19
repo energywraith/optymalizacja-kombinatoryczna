@@ -22,12 +22,12 @@
 //      Niższa wartość oznacza mniejsze prawdopodobieństwo mutacji, podczas gdy wyższa wartość może prowadzić do większego wpływu mutacji na populację.
 
 int greedy(
-   std::vector<int>processors,
-   std::vector<int>tasks
+    std::vector<int>processors,
+    std::vector<int>tasks
 ) {
     std::vector<int>::size_type processorsCount = processors.size();
     std::vector<int>::size_type tasksCount = tasks.size();
-    
+
     // Zaplanowanie zadan
     for (int i = 0; i < tasksCount; i++) {
         int minFinishTime = std::numeric_limits<int>::max();
@@ -57,7 +57,7 @@ int greedy(
             maxFinishTime = processors[j];
         }
     }
-    
+
     return maxFinishTime;
 }
 
@@ -67,7 +67,7 @@ void mutation(std::vector<int>& plan) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(0, planSize - 1);
-    
+
     // Wylosuj dwa indexy dla populacji
     int index1 = dis(gen);
     int index2 = dis(gen);
@@ -85,19 +85,53 @@ std::vector<int> crossover(const std::vector<int>& parent1, const std::vector<in
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(0, planSize - 1);
 
-    // Wylosuj punkt w którym zrobimy krzyżowanie
-    int crossoverPoint = dis(gen);
+    // Parent 1: 5 2 3 4 1
+    // Parent 2: 1 3 2 5 4
 
+    // Losuje punkt startowy
+    //   | 
+    // 5 2 3 4 1
+    int crossoverStart = dis(gen);
+
+    std::uniform_int_distribution<> dis2(crossoverStart, planSize - 1);
+
+    // Losuje punkt koncowy
+    //   |   |
+    // 5 2 3 4 1
+    int crossoverEnd = dis2(gen);
+
+    std::vector<int> parent2RemainingElements = parent2;
     std::vector<int> child(planSize);
 
+
     // Skopiuj pierwszą część parent1 do dziecka
-    for (int i = 0; i < crossoverPoint; i++) {
+    //
+    // 0 2 3 4 0
+    for (int i = crossoverStart; i < crossoverEnd; i++) {
         child[i] = parent1[i];
+        std::vector<int>::size_type parent2RemainingElementsSize = parent2RemainingElements.size();
+
+        // Usuwa skopiowane elementy z parent2
+        //   | |   |
+        // 1 3 2 5 4
+        for (int j = 0; j < parent2RemainingElementsSize; j++) {
+            if (parent2RemainingElements[j] == parent1[i]) {
+                parent2RemainingElements.erase(parent2RemainingElements.begin() + j);
+                break;
+            }
+        }
     }
 
-    // Skopiuj drugą część parent2 do dziecka
-    for (int i = crossoverPoint; i < planSize; i++) {
-        child[i] = parent2[i];
+    // Skopiuj pozostałe elementy parent2 do dziecka
+    // |       |
+    // 1 2 3 4 5
+    for (int i = 0; i < planSize; i++) {
+        if (i >= crossoverStart && i < crossoverEnd) {
+            continue;
+        }
+
+        child[i] = parent2RemainingElements[0];
+        parent2RemainingElements.erase(parent2RemainingElements.begin());
     }
 
     return child;
@@ -134,90 +168,94 @@ std::vector<std::vector<int>> selection(const std::vector<std::vector<int>>& pop
 }
 
 void genetic(
-     std::vector<int>processors,
-     std::vector<int>tasks
+    std::vector<int>processors,
+    std::vector<int>tasks
 ) {
     int populationSize;
     int maxGenerations;
     double mutationRate;
 
-    std::cout << "Liczba pokoleń: ";
+    std::cout << "Liczba pokolen: ";
     std::cin >> populationSize;
 
-    std::cout << "Maksymalna ilość generacji: ";
+    std::cout << "Maksymalna ilosc generacji: ";
     std::cin >> maxGenerations;
 
-    std::cout << "Współczynnik mutacji (0.0-1.0): ";
+    std::cout << "Wspolczynnik mutacji (0.0-1.0): ";
     std::cin >> mutationRate;
-    
+
     std::vector<int>::size_type tasksCount = tasks.size();
 
     // Wylosowanie pierwszej populacji rozwiązań
-        std::vector<std::vector<int>> population(populationSize, std::vector<int>(tasksCount));
+    std::vector<std::vector<int>> population(populationSize, std::vector<int>(tasksCount));
 
+    for (int i = 0; i < populationSize; i++) {
+        for (int j = 0; j < tasksCount; j++) {
+            population[i][j] = tasks[j];
+        }
+
+        std::random_device rd;
+        std::mt19937 g(rd());
+
+        std::shuffle(population[i].begin(), population[i].end(), g);
+    }
+
+    int generation = 0;
+    int bestCompletionTime = std::numeric_limits<int>::max();
+    std::vector<int> bestIndividual;
+
+    while (generation < maxGenerations) {
+        std::vector<std::vector<int>> selectedPopulation = selection(population, tasks);
+
+        std::vector<std::vector<int>> newPopulation;
+
+        // Najlepszą populacje dodajemy do nowej generacji, a resztę populacji dalej modyfikujemy
+        newPopulation.push_back(selectedPopulation[0]);
+        selectedPopulation.erase(selectedPopulation.begin());
+
+        // Krzyżowanie i mutacja rozwiązań do nowej populacji
+        while (newPopulation.size() < populationSize) {
+            // Wylosuj indexy dwóch populacji rodziców
+            int parentIndex1 = rand() % selectedPopulation.size();
+            int parentIndex2 = rand() % selectedPopulation.size();
+
+            std::vector<int> parent1 = selectedPopulation[parentIndex1];
+            std::vector<int> parent2 = selectedPopulation[parentIndex2];
+
+            // Krzyżowanie wylosowanych rodziców
+            std::vector<int> child = crossover(parent1, parent2);
+
+            // Mutacja populacji dziecka z siłą na podstawie parametru
+            double mutationProbability = (double)rand() / RAND_MAX;
+            if (mutationProbability <= mutationRate) {
+                mutation(child);
+            }
+
+            newPopulation.push_back(child);
+        }
+
+        population = newPopulation;
+
+        // Znajdz najlepsze rozwiązanie
         for (int i = 0; i < populationSize; i++) {
-            for (int j = 0; j < tasksCount; j++) {
-                population[i][j] = j + 1;
-            }
-            
-            std::random_device rd;
-            std::mt19937 g(rd());
+            int completionTime = greedy(population[i], tasks);
 
-            std::shuffle(population[i].begin(), population[i].end(), g);
+            if (completionTime < bestCompletionTime) {
+                bestCompletionTime = completionTime;
+                bestIndividual = population[i];
+            }
         }
 
-        int generation = 0;
-        int bestCompletionTime = std::numeric_limits<int>::max();
-        std::vector<int> bestIndividual;
+        generation++;
+    }
 
-        while (generation < maxGenerations) {
-            std::vector<std::vector<int>> selectedPopulation = selection(population, tasks);
+    std::cout << "Najlepsze rozwiązanie: ";
+    for (int i = 0; i < tasksCount; i++) {
+        std::cout << bestIndividual[i] << " ";
+    }
+    std::cout << std::endl;
 
-            std::vector<std::vector<int>> newPopulation;
-
-            // Krzyżowanie i mutacja rozwiązań do nowej populacji
-            while (newPopulation.size() < populationSize) {
-                // Wylosuj indexy dwóch populacji rodziców
-                int parentIndex1 = rand() % selectedPopulation.size();
-                int parentIndex2 = rand() % selectedPopulation.size();
-
-                std::vector<int> parent1 = selectedPopulation[parentIndex1];
-                std::vector<int> parent2 = selectedPopulation[parentIndex2];
-
-                // Krzyżowanie wylosowanych rodziców
-                std::vector<int> child = crossover(parent1, parent2);
-
-                // Mutacja populacji dziecka z siłą na podstawie parametru
-                double mutationProbability = (double)rand() / RAND_MAX;
-                if (mutationProbability <= mutationRate) {
-                    mutation(child);
-                }
-
-                newPopulation.push_back(child);
-            }
-
-            population = newPopulation;
-
-            // Znajdz najlepsze rozwiązanie
-            for (int i = 0; i < populationSize; i++) {
-                int completionTime = greedy(population[i], tasks);
-
-                if (completionTime < bestCompletionTime) {
-                    bestCompletionTime = completionTime;
-                    bestIndividual = population[i];
-                }
-            }
-
-            generation++;
-        }
-
-        std::cout << "Najlepsze rozwiązanie: ";
-        for (int i = 0; i < tasksCount; i++) {
-            std::cout << bestIndividual[i] << " ";
-        }
-        std::cout << std::endl;
-
-        std::cout << "Najlepszy czas: " << bestCompletionTime << std::endl;
+    std::cout << "Najlepszy czas: " << bestCompletionTime << std::endl;
 
 }
 
@@ -250,7 +288,7 @@ int main()
         outfile << numberOfInstances << std::endl;
 
         for (int i = 0; i < numberOfInstances; i++) {
-            outfile << rand() % (numberOfInstances - numberOfProcessors/2 + 1) + numberOfProcessors/2 << std::endl;
+            outfile << rand() % (numberOfInstances - numberOfProcessors / 2 + 1) + numberOfProcessors / 2 << std::endl;
         }
 
         outfile.close();
@@ -263,7 +301,7 @@ int main()
         std::cin >> fileName;
 
         std::ifstream instances(fileName);
-        
+
         std::vector<int> tasks;
         std::vector<int> processors;
 
@@ -293,10 +331,11 @@ int main()
         if (programOption == 2) {
             int maxFinishTime = greedy(processors, tasks);
             std::cout << "Najlepszy czas: " << maxFinishTime << std::endl;
-        } else {
+        }
+        else {
             genetic(processors, tasks);
         }
     }
-     
+
     return 0;
 }
