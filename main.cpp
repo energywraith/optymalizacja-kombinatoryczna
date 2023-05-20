@@ -61,6 +61,55 @@ int greedy(
     return maxFinishTime;
 }
 
+int calculateLowerBound(const std::vector<int>& processors, const std::vector<int>& tasks) {
+    int processorsCount = processors.size();
+    int tasksCount = tasks.size();
+
+    // Tworzenie kopii wektorów tasks i processors
+    std::vector<int> sortedTasks = tasks;
+    std::vector<int> sortedProcessors = processors;
+
+    // Sortowanie zadań w kolejności niemalejącej
+    std::sort(sortedTasks.begin(), sortedTasks.end());
+
+    // Tworzenie wektorów do przechowywania zadań dla dwóch faz
+    std::vector<int> phase1;
+    std::vector<int> phase2;
+
+    // Przypisanie zadań do odpowiednich faz
+    for (int i = 0; i < tasksCount; i++) {
+        if (sortedTasks[i] <= sortedTasks[tasksCount - 1 - i]) {
+            phase1.push_back(sortedTasks[i]);
+        } else {
+            phase2.push_back(sortedTasks[i]);
+        }
+    }
+
+    // Sortowanie faz względem czasu wykonywania zadań
+    std::sort(phase1.begin(), phase1.end());
+    std::sort(phase2.rbegin(), phase2.rend());
+
+    // Przypisanie zadań z faz do procesorów
+    int phase1Index = 0;
+    int phase2Index = 0;
+
+    for (int i = 0; i < tasksCount; i++) {
+        if (sortedTasks[i] <= sortedTasks[tasksCount - 1 - i]) {
+            sortedProcessors[phase1Index] += phase1[phase1Index];
+            phase1Index++;
+        } else {
+            sortedProcessors[processorsCount - 1 - phase2Index] += phase2[phase2Index];
+            phase2Index++;
+        }
+    }
+
+    // Znalezienie maksymalnego czasu zakończenia
+    int maxFinishTime = *std::max_element(sortedProcessors.begin(), sortedProcessors.end());
+
+    return maxFinishTime;
+}
+
+
 // Mutation - Losowe modyfikowanie rozwiązan potomnych (aby zróżnicować rozwiązania)
 void mutation(std::vector<int>& plan) {
     std::vector<int>::size_type planSize = plan.size();
@@ -89,7 +138,7 @@ std::vector<int> crossover(const std::vector<int>& parent1, const std::vector<in
     // Parent 2: 1 3 2 5 4
 
     // Losuje punkt startowy
-    //   | 
+    //   |
     // 5 2 3 4 1
     int crossoverStart = dis(gen);
 
@@ -167,7 +216,7 @@ std::vector<std::vector<int>> selection(const std::vector<std::vector<int>>& pop
     return selectedPopulation;
 }
 
-void genetic(
+int genetic(
     std::vector<int>processors,
     std::vector<int>tasks
 ) {
@@ -249,14 +298,13 @@ void genetic(
         generation++;
     }
 
-    std::cout << "Najlepsze rozwiązanie: ";
-    for (int i = 0; i < tasksCount; i++) {
-        std::cout << bestIndividual[i] << " ";
-    }
-    std::cout << std::endl;
-
-    std::cout << "Najlepszy czas: " << bestCompletionTime << std::endl;
-
+//    std::cout << "Najlepsze rozwiązanie: ";
+//    for (int i = 0; i < tasksCount; i++) {
+//        std::cout << bestIndividual[i] << " ";
+//    }
+//    std::cout << std::endl;
+    
+    return bestCompletionTime;
 }
 
 int main()
@@ -264,8 +312,7 @@ int main()
     std::cout
         << "Co chcesz zrobic?\n"
         << "1. Wygenerowac\n"
-        << "2. Wczytac i uzyc algorytmu zachlannego\n"
-        << "3. Wczytac i uzyc metaheurestyki genetycznej\n"
+        << "2. Wczytaj i przeanalizuj\n"
         << std::endl;
 
     int programOption;
@@ -329,11 +376,13 @@ int main()
         }
 
         if (programOption == 2) {
-            int maxFinishTime = greedy(processors, tasks);
-            std::cout << "Najlepszy czas: " << maxFinishTime << std::endl;
-        }
-        else {
-            genetic(processors, tasks);
+            int lowerbound = calculateLowerBound(processors, tasks);
+            int greedyCompletionTime = greedy(processors, tasks);
+            int geneticCompletionTime = genetic(processors, tasks);
+            
+            std::cout << std::endl << "Lowerbound: " << lowerbound << std::endl;
+            std::cout << "Zachlanny: " << greedyCompletionTime << std::endl;
+            std::cout << "Genetyczny: " << geneticCompletionTime << std::endl;
         }
     }
 
